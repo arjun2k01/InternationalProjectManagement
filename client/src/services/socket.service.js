@@ -1,6 +1,9 @@
 import { io } from "socket.io-client";
 
 const SOCKET_EVENTS = [
+  "connect",
+  "disconnect",
+  "connect_error",
   "task:created",
   "task:updated",
   "task:status_changed",
@@ -134,6 +137,10 @@ class SocketService {
     return () => {
       this.socket?.off(eventName, callback);
     };
+  }
+
+  on(eventName, callback) {
+    return this.addListener(eventName, callback);
   }
 
   onTaskCreated(callback) {

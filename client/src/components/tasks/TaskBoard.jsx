@@ -28,9 +28,14 @@ export default function TaskBoard({
 }) {
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [createStatus, setCreateStatus] = useState(null);
+  const storeTasks = taskStore?.tasks;
+  const storeOnlineUsers = taskStore?.onlineUsers;
 
-  const boardTasks = tasks ?? taskStore?.tasks ?? [];
-  const boardOnlineUsers = onlineUsers ?? taskStore?.onlineUsers ?? [];
+  const boardTasks = useMemo(() => tasks ?? storeTasks ?? [], [storeTasks, tasks]);
+  const boardOnlineUsers = useMemo(
+    () => onlineUsers ?? storeOnlineUsers ?? [],
+    [onlineUsers, storeOnlineUsers]
+  );
   const selectedTask = boardTasks.find(
     (task) => String(task.id || task._id) === String(selectedTaskId)
   );

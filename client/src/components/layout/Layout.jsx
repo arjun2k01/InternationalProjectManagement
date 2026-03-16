@@ -1,30 +1,35 @@
-import { Outlet } from "react-router-dom";
-import { useState } from "react";
+import React, { useState } from 'react';
+import { Outlet } from 'react-router-dom';
+import Sidebar from './Sidebar';
+import Header from './Header';
 
-import Header from "./Header";
-import Sidebar from "./Sidebar";
-
-export default function Layout({ authStore, children, navigationItems }) {
+const Layout = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <Header
-        authStore={authStore}
-        onMenuClick={() => setIsSidebarOpen(true)}
-      />
-
-      <div className="flex min-h-[calc(100vh-4rem)]">
-        <Sidebar
-          isOpen={isSidebarOpen}
-          onClose={() => setIsSidebarOpen(false)}
-          items={navigationItems}
+    <div className="flex bg-slate-50 min-h-screen font-sans text-slate-900 overflow-hidden">
+      {/* Mobile Sidebar Overlay */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-800/50 z-40 lg:hidden transition-opacity"
+          onClick={() => setIsSidebarOpen(false)}
         />
+      )}
 
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-7xl">{children ?? <Outlet />}</div>
+      {/* Sidebar Navigation */}
+      <Sidebar isOpen={isSidebarOpen} closeSidebar={() => setIsSidebarOpen(false)} />
+
+      {/* Main App Canvas */}
+      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+        <Header toggleSidebar={() => setIsSidebarOpen(true)} />
+        
+        {/* Dynamic Page Content rendered here via React Router */}
+        <main className="flex-1 overflow-y-auto relative outline-none pb-safe">
+            <Outlet />
         </main>
       </div>
     </div>
   );
-}
+};
+
+export default Layout;

@@ -53,8 +53,6 @@ const userSchema = new Schema(
   }
 );
 
-userSchema.index({ email: 1 }, { unique: true });
-
 userSchema.pre("save", async function hashPassword(next) {
   try {
     if (!this.isModified("password")) {

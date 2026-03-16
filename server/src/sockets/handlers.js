@@ -3,18 +3,67 @@ const logger = require("../utils/logger");
 
 const getRoomName = (projectId) => `project:${projectId}`;
 const getPresenceKey = (projectId) => `presence:project:${projectId}`;
+const inMemoryPresence = new Map();
+
+const getSocketUserPayload = (user) => ({
+  id: user.id,
+  name: user.name,
+  email: user.email,
+  role: user.role,
+});
 
 const hasProjectAccess = (project, user) =>
   user.role === "admin" ||
   String(project.owner) === String(user.id) ||
   project.members.some((member) => String(member.user) === String(user.id));
 
+const incrementLocalPresence = (projectId, userId) => {
+  const projectPresence = inMemoryPresence.get(projectId) || new Map();
+  const nextCount = Number(projectPresence.get(userId) || 0) + 1;
+
+  projectPresence.set(userId, nextCount);
+  inMemoryPresence.set(projectId, projectPresence);
+  return nextCount;
+};
+
+const decrementLocalPresence = (projectId, userId) => {
+  const projectPresence = inMemoryPresence.get(projectId);
+
+  if (!projectPresence) {
+    return 0;
+  }
+
+  const nextCount = Number(projectPresence.get(userId) || 0) - 1;
+
+  if (nextCount <= 0) {
+    projectPresence.delete(userId);
+  } else {
+    projectPresence.set(userId, nextCount);
+  }
+
+  if (projectPresence.size === 0) {
+    inMemoryPresence.delete(projectId);
+  } else {
+    inMemoryPresence.set(projectId, projectPresence);
+  }
+
+  return Math.max(nextCount, 0);
+};
+
 const incrementPresence = async (redisClient, projectId, userId) => {
+  if (!redisClient) {
+    return incrementLocalPresence(projectId, userId);
+  }
+
   const nextCount = await redisClient.hincrby(getPresenceKey(projectId), userId, 1);
   return Number(nextCount);
 };
 
 const decrementPresence = async (redisClient, projectId, userId) => {
+  if (!redisClient) {
+    return decrementLocalPresence(projectId, userId);
+  }
+
   const nextCount = await redisClient.hincrby(getPresenceKey(projectId), userId, -1);
 
   if (nextCount <= 0) {
@@ -52,9 +101,10 @@ const joinProjectRoom = async (io, socket, redisClient, projectId) => {
   );
 
   if (presenceCount === 1) {
-    io.to(getRoomName(normalizedProjectId)).emit("user:online", {
-      userId: socket.user.id,
-    });
+    io.to(getRoomName(normalizedProjectId)).emit(
+      "user:online",
+      getSocketUserPayload(socket.user)
+    );
   }
 };
 
@@ -75,9 +125,10 @@ const leaveProjectRoom = async (io, socket, redisClient, projectId) => {
   );
 
   if (presenceCount === 0) {
-    io.to(getRoomName(normalizedProjectId)).emit("user:offline", {
-      userId: socket.user.id,
-    });
+    io.to(getRoomName(normalizedProjectId)).emit(
+      "user:offline",
+      getSocketUserPayload(socket.user)
+    );
   }
 };
 

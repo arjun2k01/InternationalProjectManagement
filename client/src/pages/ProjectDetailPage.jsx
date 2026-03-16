@@ -19,7 +19,9 @@ const ProjectDetailPage = () => {
   const { user } = authStore;
   const {
     addMember,
+    activities,
     currentProject,
+    fetchActivities,
     fetchProjectById,
     isLoading: isProjectLoading,
     error: projectError,
@@ -36,10 +38,11 @@ const ProjectDetailPage = () => {
 
   useEffect(() => {
     if (projectId) {
-      fetchProjectById(projectId);
-      fetchTasks(projectId);
+      fetchProjectById(projectId).catch(() => {});
+      fetchActivities(projectId).catch(() => {});
+      fetchTasks(projectId).catch(() => {});
     }
-  }, [projectId, fetchProjectById, fetchTasks]);
+  }, [projectId, fetchActivities, fetchProjectById, fetchTasks]);
 
   if (projectError) return <Navigate to="/projects" replace />;
 
@@ -107,6 +110,7 @@ const ProjectDetailPage = () => {
              </div>
            )}
            <TaskBoard
+             activities={activities}
              members={members}
              onlineUsers={onlineUsers}
              projectId={projectId}

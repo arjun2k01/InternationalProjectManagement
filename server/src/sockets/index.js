@@ -8,11 +8,10 @@ const registerSocketHandlers = require("./handlers");
 
 let ioInstance;
 
-const initializeSocketServer = (httpServer, { pubClient, subClient, redisClient }) => {
-  if (!pubClient || !subClient || !redisClient) {
-    throw new Error("Redis clients must be connected before initializing Socket.IO.");
-  }
-
+const initializeSocketServer = (
+  httpServer,
+  { pubClient = null, subClient = null, redisClient = null } = {}
+) => {
   ioInstance = new Server(httpServer, {
     cors: {
       origin: env.CLIENT_URL.split(",").map((origin) => origin.trim()),
@@ -21,7 +20,13 @@ const initializeSocketServer = (httpServer, { pubClient, subClient, redisClient 
     transports: ["websocket", "polling"],
   });
 
-  ioInstance.adapter(createAdapter(pubClient, subClient));
+  if (pubClient && subClient) {
+    ioInstance.adapter(createAdapter(pubClient, subClient));
+    logger.info("Socket.IO Redis adapter enabled.");
+  } else {
+    logger.warn("Socket.IO Redis adapter disabled. Using in-memory socket adapter.");
+  }
+
   ioInstance.use(authenticateSocket);
 
   ioInstance.on("connection", (socket) => {

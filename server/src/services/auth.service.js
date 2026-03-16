@@ -107,11 +107,14 @@ const registerUser = async ({ name, email, password }) => {
     throw ApiError.conflict("A user with this email already exists.");
   }
 
+  const userCount = await User.countDocuments();
+  const role = userCount === 0 ? "admin" : "member";
+
   const user = await User.create({
     name,
     email: normalised,
     password,
-    role: "member",
+    role,
   });
 
   return buildAuthResponse(user);

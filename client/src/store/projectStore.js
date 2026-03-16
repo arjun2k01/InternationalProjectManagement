@@ -33,6 +33,7 @@ const upsertProject = (projects, nextProject) => {
 const useProjectStore = create((set) => ({
   projects: [],
   currentProject: null,
+  activities: [],
   isLoading: false,
   error: null,
 
@@ -73,8 +74,27 @@ const useProjectStore = create((set) => ({
     } catch (error) {
       set({
         currentProject: null,
+        activities: [],
         isLoading: false,
         error: extractErrorMessage(error, "Unable to load the project."),
+      });
+      throw error;
+    }
+  },
+
+  fetchActivities: async (projectId, page = 1, limit = 20) => {
+    if (!projectId) {
+      return [];
+    }
+
+    try {
+      const result = await projectService.getActivities(projectId, page, limit);
+      const activities = Array.isArray(result?.activities) ? result.activities : [];
+      set({ activities });
+      return activities;
+    } catch (error) {
+      set({
+        error: extractErrorMessage(error, "Unable to load project activity."),
       });
       throw error;
     }

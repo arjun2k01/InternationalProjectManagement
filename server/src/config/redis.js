@@ -6,6 +6,7 @@ const logger = require("../utils/logger");
 let redisClient;
 let pubClient;
 let subClient;
+const REDIS_CONNECT_TIMEOUT_MS = Number(process.env.REDIS_CONNECT_TIMEOUT_MS || 3000);
 
 const attachRedisEvents = (client, label) => {
   client.on("connect", () => {
@@ -55,29 +56,80 @@ const ensureClients = () => {
   }
 };
 
-const connectClient = async (client) => {
+const resetClients = () => {
+  redisClient = null;
+  pubClient = null;
+  subClient = null;
+};
+
+const destroyClients = () => {
+  [subClient, pubClient, redisClient].forEach((client) => {
+    if (!client) {
+      return;
+    }
+
+    try {
+      client.disconnect();
+    } catch (_error) {
+      // Ignore disconnect errors during fallback cleanup.
+    }
+  });
+
+  resetClients();
+};
+
+const withTimeout = (promise, label) =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`${label} connection timed out after ${REDIS_CONNECT_TIMEOUT_MS}ms.`));
+      }, REDIS_CONNECT_TIMEOUT_MS);
+    }),
+  ]);
+
+const connectClient = async (client, label) => {
   if (!client || ["ready", "connect", "connecting"].includes(client.status)) {
     return client;
   }
 
-  await client.connect();
+  await withTimeout(client.connect(), label);
   return client;
 };
 
 const connectRedis = async () => {
   ensureClients();
+  logger.info("Connecting to Redis.");
 
-  await Promise.all([
-    connectClient(redisClient),
-    connectClient(pubClient),
-    connectClient(subClient),
-  ]);
+  try {
+    await Promise.all([
+      connectClient(redisClient, "Redis cache client"),
+      connectClient(pubClient, "Redis pub client"),
+      connectClient(subClient, "Redis sub client"),
+    ]);
 
-  return {
-    redisClient,
-    pubClient,
-    subClient,
-  };
+    return {
+      redisClient,
+      pubClient,
+      subClient,
+    };
+  } catch (error) {
+    destroyClients();
+
+    if (env.isProduction) {
+      throw error;
+    }
+
+    logger.warn(
+      `Redis is unavailable in development. Continuing without Redis-backed sockets. ${error.message}`
+    );
+
+    return {
+      redisClient: null,
+      pubClient: null,
+      subClient: null,
+    };
+  }
 };
 
 const closeClient = async (client, label) => {
@@ -100,6 +152,7 @@ const closeRedisConnections = async () => {
     closeClient(pubClient, "Redis pub client"),
     closeClient(redisClient, "Redis cache client"),
   ]);
+  resetClients();
 };
 
 const getRedisCacheClient = () => redisClient;

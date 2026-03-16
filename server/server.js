@@ -68,15 +68,19 @@ const shutdown = async (signal, exitCode = 0) => {
 
 const startServer = async () => {
   try {
+    logger.info("Starting backend server.");
     await connectDB();
-    await connectRedis();
+    const redisConnections = await connectRedis();
 
     server = http.createServer(app);
-    io = initializeSocketServer(server, {
-      pubClient: getRedisPubClient(),
-      subClient: getRedisSubClient(),
-      redisClient: getRedisCacheClient(),
-    });
+    io = initializeSocketServer(
+      server,
+      redisConnections || {
+        pubClient: getRedisPubClient(),
+        subClient: getRedisSubClient(),
+        redisClient: getRedisCacheClient(),
+      }
+    );
 
     server.listen(env.PORT, () => {
       logger.info(
