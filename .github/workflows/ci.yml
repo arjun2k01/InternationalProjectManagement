@@ -80,14 +80,6 @@ jobs:
         working-directory: client
         run: npm run build
 
-      # Persist the frontend build output for the deploy job.
-      - name: Upload frontend build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: client-dist
-          path: client/dist
-          if-no-files-found: error
-
   deploy-backend:
     name: Deploy Backend
     needs:
@@ -111,31 +103,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Restore the already-built frontend artifact from the build job.
-      - name: Download frontend artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: client-dist
-          path: client-dist
-
-      # Netlify CLI is used here for explicit production deployment from CI.
-      - name: Setup Node.js 18
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-
-      - name: Install Netlify CLI
-        run: npm install --global netlify-cli
-
-      # Deploy the downloaded build directory to the configured Netlify site.
-      - name: Deploy to Netlify
+      # Trigger Vercel production deployment using a project deploy hook.
+      - name: Trigger Vercel deploy hook
         env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
         run: |
-          netlify deploy \
-            --dir=client-dist \
-            --prod \
-            --site "$NETLIFY_SITE_ID" \
-            --auth "$NETLIFY_AUTH_TOKEN" \
-            --message "GitHub Actions deploy ${GITHUB_SHA}"
+          curl --fail --show-error --silent --request POST "$VERCEL_DEPLOY_HOOK_URL"

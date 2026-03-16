@@ -235,19 +235,20 @@ This repository includes deployment assets for both a managed-service setup and 
 6. Provision Redis through Render Key Value, Redis Cloud, or another managed Redis service.
 7. Use MongoDB Atlas for `MONGODB_URI` and keep it private.
 
-#### Frontend (Netlify)
-1. Create a Netlify site from the same GitHub repository.
-2. Use the included `netlify.toml`, or configure the same values manually:
-   - Base directory: `client`
+#### Frontend (Vercel)
+1. Create a Vercel project from the same GitHub repository.
+2. Set the Root Directory to `client`.
+3. Use the Vite defaults:
    - Build command: `npm run build`
-   - Publish directory: `dist`
-3. Set `VITE_API_URL` and `VITE_SOCKET_URL` to the deployed backend base URL.
-4. Deploy the site.
+   - Output directory: `dist`
+4. Set `VITE_API_URL` and `VITE_SOCKET_URL` to the deployed backend base URL.
+5. Create a Vercel deploy hook and store it in GitHub Actions as `VERCEL_DEPLOY_HOOK_URL` if you want CI-triggered production redeploys.
+6. Deploy the site.
 
 #### CI/CD
 1. GitHub Actions is defined in `.github/workflows/ci.yml`.
 2. The pipeline runs backend and frontend lint/build checks.
-3. On pushes to `main`, it triggers the Render deploy hook and publishes the frontend to Netlify.
+3. On pushes to `main`, it triggers the Render deploy hook and the Vercel deploy hook.
 
 ### Option B: VM deployment with Nginx and SSL
 1. Provision a Linux VM and install Node.js 18+, Nginx, and a process manager such as PM2.
