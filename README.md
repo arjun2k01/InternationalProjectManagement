@@ -89,37 +89,42 @@ The backend strictly separates routes, controllers, and services. Controllers ar
 
 ## API Documentation
 
+System roles in this codebase are `admin`, `project_manager`, and `member`.
+Project membership roles are `manager` and `member`.
+
 | Method | Endpoint | Description | Auth Required | Role Required |
 |---|---|---|---|---|
 | **POST** | `/api/auth/register` | Register a new user | No | - |
 | **POST** | `/api/auth/login` | Authenticate and get JWT | No | - |
-| **POST** | `/api/auth/refresh` | Rotate access & refresh tokens | Yes | - |
-| **POST** | `/api/auth/logout` | Terminate active session | Yes | - |
-| **GET**  | `/api/auth/me` | Fetch active user profile | Yes | - |
-| **POST** | `/api/projects` | Create a new project | Yes | Admin, Manager |
-| **GET**  | `/api/projects` | List projects for the user | Yes | - |
-| **GET**  | `/api/projects/:id` | Get details for a project | Yes | Member |
-| **PUT**  | `/api/projects/:id` | Update project details | Yes | Admin, Manager |
-| **DELETE**|`/api/projects/:id` | Delete project and cascade data | Yes | Admin |
-| **POST** | `/api/projects/:id/members`| Add a new member via email | Yes | Admin, Manager |
-| **DELETE**|`/api/projects/:id/members/:userId`| Remove a member | Yes | Admin, Manager |
-| **POST** | `/api/projects/:projectId/tasks`| Create a new task | Yes | Member |
-| **GET**  | `/api/projects/:projectId/tasks`| List and filter tasks | Yes | Member |
-| **GET**  | `/api/projects/:projectId/tasks/:taskId`| Get task details | Yes | Member |
-| **PUT**  | `/api/projects/:projectId/tasks/:taskId`| Update task details | Yes | Member |
-| **DELETE**|`/api/projects/:projectId/tasks/:taskId`| Delete a task | Yes | Manager |
-| **PATCH**| `/api/projects/:projectId/tasks/:taskId/status`| Update status/column order | Yes | Member |
-| **PATCH**| `/api/projects/:projectId/tasks/:taskId/assign`| Assign the task to a user | Yes | Member |
-| **GET**  | `/api/projects/:projectId/activities`| Poll paginated activity logs| Yes | Member |
+| **POST** | `/api/auth/refresh` | Rotate access and refresh tokens | No | - |
+| **POST** | `/api/auth/logout` | Terminate the active session | Yes | Authenticated user |
+| **GET**  | `/api/auth/me` | Fetch the active user profile | Yes | Authenticated user |
+| **POST** | `/api/projects` | Create a new project | Yes | System role `admin` or `project_manager` |
+| **GET**  | `/api/projects` | List projects visible to the current user | Yes | Any authenticated user |
+| **GET**  | `/api/projects/:id` | Get details for one project | Yes | Project owner, member, or `admin` |
+| **PUT**  | `/api/projects/:id` | Update project details | Yes | Project owner, `admin`, or member with project role `manager` |
+| **DELETE**|`/api/projects/:id` | Delete a project and cascade tasks and activities | Yes | `admin`, or system role `project_manager` with project management access |
+| **POST** | `/api/projects/:id/members`| Add a member by email | Yes | Project owner, `admin`, or member with project role `manager` |
+| **DELETE**|`/api/projects/:id/members/:userId`| Remove a member | Yes | Project owner, `admin`, or member with project role `manager` |
+| **POST** | `/api/projects/:projectId/tasks`| Create a new task | Yes | Project owner, member, or `admin` |
+| **GET**  | `/api/projects/:projectId/tasks`| List and filter tasks | Yes | Project owner, member, or `admin` |
+| **GET**  | `/api/projects/:projectId/tasks/:taskId`| Get task details | Yes | Project owner, member, or `admin` |
+| **PUT**  | `/api/projects/:projectId/tasks/:taskId`| Update editable task fields | Yes | Project owner, member, or `admin` |
+| **DELETE**|`/api/projects/:projectId/tasks/:taskId`| Delete a task | Yes | Project owner, `admin`, or member with project role `manager` |
+| **PATCH**| `/api/projects/:projectId/tasks/:taskId/status`| Update task status and board order | Yes | Project owner, member, or `admin` |
+| **PATCH**| `/api/projects/:projectId/tasks/:taskId/assign`| Assign or unassign a task | Yes | Project owner, `admin`, or member with project role `manager` |
+| **GET**  | `/api/projects/:projectId/activities`| Get project activity history | Yes | Project owner, member, or `admin` |
 
 ---
 
 ## Socket Events Documentation
 
+Project-specific broadcasts are emitted to the room `project:{projectId}`.
+
 | Event Name | Direction | Payload | Description |
 |---|---|---|---|
-| `project:join` | Client → Server | `{ projectId }` | Emitted by client on mount to join the room. |
-| `project:leave` | Client → Server | `{ projectId }` | Emitted by client on unmount. |
+| `join:project` | Client → Server | `{ projectId }` | Emitted by the client when entering a project view. |
+| `leave:project` | Client → Server | `{ projectId }` | Emitted by the client when leaving a project view. |
 | `task:created` | Server → Client | `{ task }` | Emitted when a new task is created. |
 | `task:updated` | Server → Client | `{ task }` | Emitted on full task updates (titles, dates). |
 | `task:status_changed`| Server → Client | `{ taskId, oldStatus, newStatus, updatedBy }` | Emitted on column drag-and-drops. |
@@ -160,10 +165,11 @@ cd project-mgmt
 ### 2. Backend Setup
 ```bash
 cd server
-cp .env.example .env
-
-# Edit the .env file with your local MongoDB and Redis URIs securely
-# E.g. MONGODB_URI=mongodb://localhost:27017/projectflow
+# Copy .env.example to .env, then edit the values for your environment
+# Example:
+#   PowerShell: Copy-Item .env.example .env
+#   Bash:       cp .env.example .env
+# E.g. MONGODB_URI=mongodb://localhost:27017/project-mgmt
 
 npm install
 npm run dev
@@ -174,8 +180,11 @@ npm run dev
 Open a new terminal window:
 ```bash
 cd client
-cp .env.example .env
-
+# Copy .env.example to .env, then edit the values for your environment
+# Example:
+#   PowerShell: Copy-Item .env.example .env
+#   Bash:       cp .env.example .env
+#
 # Edit .env with your backend target
 # VITE_API_URL=http://localhost:5000
 # VITE_SOCKET_URL=http://localhost:5000
@@ -211,24 +220,42 @@ Open your browser and navigate to **[http://localhost:3000](http://localhost:300
 
 ## Deployment Steps
 
-### Backend Deployment (Render)
-1. Push your code to a GitHub repository.
-2. Ensure your **MongoDB Atlas** cluster and **Redis Cloud** (or Render Redis) are active. Whitelist IPs (allow access from anywhere `0.0.0.0/0` if necessary for Render).
-3. In Render, create a new **Web Service**. Connect your GitHub repository.
-4. Set the Root Directory to `server`.
-5. Build Command: `npm install`
-6. Start Command: `npm start`
-7. In the completely secure Render Environment Variables tab, paste all backend `.env` keys.
-   *(Make sure `CLIENT_URL` points to your future frontend deployment URL)*.
+This repository includes deployment assets for both a managed-service setup and a VM-based setup.
 
-### Frontend Deployment (Vercel / Netlify)
-1. In Vercel, create a **New Project** and import the same repository.
-2. Set the Root Directory to `client`.
-3. The framework preset should auto-detect **Vite**.
-4. Add the Environment Variables:
-   * `VITE_API_URL` -> URL of your Render backend.
-   * `VITE_SOCKET_URL` -> URL of your Render backend.
-5. Click **Deploy**.
+### Option A: Managed deployment used by the checked-in config
+
+#### Backend (Render)
+1. Push the repository to GitHub.
+2. Create a Render web service manually, or apply the included `render.yaml` blueprint.
+3. Use the backend commands from the repo config:
+   - Build: `cd server && npm install`
+   - Start: `cd server && node server.js`
+4. Provide the backend environment variables from `server/.env.example`.
+5. Set `CLIENT_URL` to the final frontend origin.
+6. Provision Redis through Render Key Value, Redis Cloud, or another managed Redis service.
+7. Use MongoDB Atlas for `MONGODB_URI` and keep it private.
+
+#### Frontend (Netlify)
+1. Create a Netlify site from the same GitHub repository.
+2. Use the included `netlify.toml`, or configure the same values manually:
+   - Base directory: `client`
+   - Build command: `npm run build`
+   - Publish directory: `dist`
+3. Set `VITE_API_URL` and `VITE_SOCKET_URL` to the deployed backend base URL.
+4. Deploy the site.
+
+#### CI/CD
+1. GitHub Actions is defined in `.github/workflows/ci.yml`.
+2. The pipeline runs backend and frontend lint/build checks.
+3. On pushes to `main`, it triggers the Render deploy hook and publishes the frontend to Netlify.
+
+### Option B: VM deployment with Nginx and SSL
+1. Provision a Linux VM and install Node.js 18+, Nginx, and a process manager such as PM2.
+2. Run the backend on `127.0.0.1:5000`.
+3. Copy `deploy/nginx/projectflow.conf` to your Nginx sites configuration and replace `api.projectflow.example.com` with your real domain or subdomain.
+4. Issue a Let's Encrypt certificate for that domain and update the certificate paths if needed.
+5. Point DNS to the VM, reload Nginx, and verify both `/api` and `/socket.io/` are proxied correctly.
+6. Keep MongoDB and Redis credentials in server-side environment variables only.
 
 ---
 
@@ -253,9 +280,10 @@ Recommended flow:
 
 ## URLs
 
-*   **Frontend**: `[Insert Frontend Vercel/Netlify URL]`
-*   **Backend API**: `[Insert Backend Render URL]`
-*   **API Docs**: `[Insert Postman/Swagger Link if applicable]`
+*   **Frontend**: Pending deployment for this workspace
+*   **Backend API**: Pending deployment for this workspace
+*   **Health Check**: Pending deployment for this workspace (`/health`)
+*   **API Docs**: No separate Swagger/Postman URL is published in this repository; use the API table above
 
 ---
 

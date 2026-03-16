@@ -28,10 +28,10 @@ jobs:
         with:
           node-version: 18
 
-      # Install backend dependencies exactly from package-lock.json.
+      # Install backend dependencies using npm install (package-lock.json is not present as bun is used locally).
       - name: Install backend dependencies
         working-directory: server
-        run: npm ci
+        run: npm install
 
       # Lint the backend codebase.
       - name: Run ESLint
@@ -65,10 +65,10 @@ jobs:
         with:
           node-version: 18
 
-      # Install frontend dependencies exactly from package-lock.json.
+      # Install frontend dependencies using npm install (package-lock.json is not present).
       - name: Install frontend dependencies
         working-directory: client
-        run: npm ci
+        run: npm install
 
       # Lint the frontend codebase.
       - name: Run ESLint

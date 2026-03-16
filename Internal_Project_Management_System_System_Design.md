@@ -65,28 +65,31 @@
 ```
 
 ### 2. API Endpoint List
+System roles in the codebase are `admin`, `project_manager`, and `member`.
+Project membership roles are `manager` and `member`.
+
 | Method | Endpoint | Purpose | Auth Required | Role |
 |---|---|---|---|---|
 | POST | `/api/auth/register` | Register new user | No | Public |
 | POST | `/api/auth/login` | Login and return access JWT plus refresh token | No | Public |
 | POST | `/api/auth/refresh` | Refresh access token using valid refresh token | No (refresh token required) | Public |
-| POST | `/api/auth/logout` | Invalidate stored refresh token and end session | Yes (JWT or refresh token context) | Admin, Project Manager, Member |
-| GET | `/api/auth/me` | Get current authenticated user profile | Yes (JWT) | Admin, Project Manager, Member |
-| POST | `/api/projects` | Create project | Yes (JWT) | Admin, Project Manager |
-| GET | `/api/projects` | List projects visible to current user | Yes (JWT) | Admin, Project Manager, Member |
-| GET | `/api/projects/:id` | Get project details including members | Yes (JWT) | Admin, Project Manager, Member (project member) |
-| PUT | `/api/projects/:id` | Update project metadata and visibility | Yes (JWT) | Admin, Project Manager (project owner/manager) |
-| DELETE | `/api/projects/:id` | Delete project | Yes (JWT) | Admin |
-| POST | `/api/projects/:id/members` | Add member to project | Yes (JWT) | Admin, Project Manager (project owner/manager) |
-| DELETE | `/api/projects/:id/members/:userId` | Remove member from project | Yes (JWT) | Admin, Project Manager (project owner/manager) |
-| POST | `/api/projects/:projectId/tasks` | Create task in project | Yes (JWT) | Admin, Project Manager, Member (project member) |
-| GET | `/api/projects/:projectId/tasks` | List tasks in a project | Yes (JWT) | Admin, Project Manager, Member (project member) |
-| GET | `/api/projects/:projectId/tasks/:taskId` | Get task detail | Yes (JWT) | Admin, Project Manager, Member (project member) |
-| PUT | `/api/projects/:projectId/tasks/:taskId` | Update task title, description, priority, due date, assignee, or order | Yes (JWT) | Admin, Project Manager, Member (project member) |
-| DELETE | `/api/projects/:projectId/tasks/:taskId` | Delete task | Yes (JWT) | Admin, Project Manager (project owner/manager) |
-| PATCH | `/api/projects/:projectId/tasks/:taskId/status` | Update task status and trigger real-time board event | Yes (JWT) | Admin, Project Manager, Member (project member) |
-| PATCH | `/api/projects/:projectId/tasks/:taskId/assign` | Assign or reassign task to member | Yes (JWT) | Admin, Project Manager (project owner/manager) |
-| GET | `/api/projects/:projectId/activities` | Get project activity log | Yes (JWT) | Admin, Project Manager (project owner/manager) |
+| POST | `/api/auth/logout` | Invalidate stored refresh token and end session | Yes (JWT) | Any authenticated user |
+| GET | `/api/auth/me` | Get current authenticated user profile | Yes (JWT) | Any authenticated user |
+| POST | `/api/projects` | Create project | Yes (JWT) | System role `admin` or `project_manager` |
+| GET | `/api/projects` | List projects visible to current user | Yes (JWT) | Any authenticated user |
+| GET | `/api/projects/:id` | Get project details including members | Yes (JWT) | Project owner, project member, or `admin` |
+| PUT | `/api/projects/:id` | Update project metadata and visibility | Yes (JWT) | Project owner, `admin`, or project member with role `manager` |
+| DELETE | `/api/projects/:id` | Delete project | Yes (JWT) | `admin`, or system role `project_manager` with project management access |
+| POST | `/api/projects/:id/members` | Add member to project | Yes (JWT) | Project owner, `admin`, or project member with role `manager` |
+| DELETE | `/api/projects/:id/members/:userId` | Remove member from project | Yes (JWT) | Project owner, `admin`, or project member with role `manager` |
+| POST | `/api/projects/:projectId/tasks` | Create task in project | Yes (JWT) | Project owner, project member, or `admin` |
+| GET | `/api/projects/:projectId/tasks` | List tasks in a project | Yes (JWT) | Project owner, project member, or `admin` |
+| GET | `/api/projects/:projectId/tasks/:taskId` | Get task detail | Yes (JWT) | Project owner, project member, or `admin` |
+| PUT | `/api/projects/:projectId/tasks/:taskId` | Update task title, description, priority, due date, assignee, or order | Yes (JWT) | Project owner, project member, or `admin` |
+| DELETE | `/api/projects/:projectId/tasks/:taskId` | Delete task | Yes (JWT) | Project owner, `admin`, or project member with role `manager` |
+| PATCH | `/api/projects/:projectId/tasks/:taskId/status` | Update task status and trigger real-time board event | Yes (JWT) | Project owner, project member, or `admin` |
+| PATCH | `/api/projects/:projectId/tasks/:taskId/assign` | Assign or reassign task to member | Yes (JWT) | Project owner, `admin`, or project member with role `manager` |
+| GET | `/api/projects/:projectId/activities` | Get project activity log | Yes (JWT) | Project owner, project member, or `admin` |
 
 ### 3. Database Schema (MongoDB Collections)
 
@@ -197,7 +200,7 @@ The application uses Socket.IO attached to the same Node.js HTTP server that ser
 
 Redis is used as the Socket.IO adapter so multiple Node.js instances can behave as one logical real-time cluster. When one instance emits a project event, Redis publishes it and all subscribed instances forward the event to sockets connected on their process. Redis can also store lightweight presence metadata such as active socket IDs or online user sets.
 
-Socket authentication is handled during the handshake. After a user logs in via REST, the client includes the access JWT in `socket.auth.token` when connecting. A Socket.IO middleware verifies the token, resolves the user identity, and rejects the connection with an `error` event if the token is invalid or expired.
+Socket authentication is handled during the handshake. After a user logs in via REST, the client includes the access JWT in `socket.auth.token` when connecting. A Socket.IO middleware verifies the token, resolves the user identity, and rejects the connection during the handshake if the token is invalid or expired.
 
 The room model is project-centric. Each project maps to a room named `project:{projectId}`. When a user opens a project board, the client emits `join:project` with the project ID. The server verifies that the user has access to the project, joins the socket to the room, and can optionally broadcast presence updates to other room members. When the user navigates away, closes the board, or disconnects, the socket leaves the room and the server updates presence state.
 
@@ -223,8 +226,8 @@ Presence events are driven by socket joins and disconnects. A user can have mult
 | `task:assigned` | Server→Room | `{ taskId, assignee }` | Task assigned |
 | `member:joined` | Server→Room | `{ user }` | New member added |
 | `member:left` | Server→Room | `{ userId }` | Member removed |
-| `user:online` | Server→Room | `{ userId }` | Presence indicator |
-| `user:offline` | Server→Room | `{ userId }` | Presence indicator |
+| `user:online` | Server→Room | `{ id, name, email, role }` | Presence indicator |
+| `user:offline` | Server→Room | `{ id, name, email, role }` | Presence indicator |
 | `error` | Server→Client | `{ message }` | Error notification |
 
 ### 5. Why This Approach Was Chosen
