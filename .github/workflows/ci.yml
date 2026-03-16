@@ -1,0 +1,141 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-build-backend:
+    name: Lint and Build Backend
+    runs-on: ubuntu-latest
+
+    steps:
+      # Pull the repository contents into the runner.
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Standardize all CI jobs on Node.js 18.
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      # Install backend dependencies exactly from package-lock.json.
+      - name: Install backend dependencies
+        working-directory: server
+        run: npm ci
+
+      # Lint the backend codebase.
+      - name: Run ESLint
+        working-directory: server
+        run: npm run lint
+
+      # Run a backend build if one exists; otherwise perform a syntax check.
+      - name: Run backend build check
+        working-directory: server
+        shell: bash
+        run: |
+          if [ "$(node -p "Boolean(require('./package.json').scripts.build)")" = "true" ]; then
+            npm run build
+          else
+            node --check server.js
+            find src -name "*.js" -print0 | xargs -0 -n1 node --check
+          fi
+
+  lint-and-build-frontend:
+    name: Lint and Build Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      # Pull the repository contents into the runner.
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Standardize all CI jobs on Node.js 18.
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      # Install frontend dependencies exactly from package-lock.json.
+      - name: Install frontend dependencies
+        working-directory: client
+        run: npm ci
+
+      # Lint the frontend codebase.
+      - name: Run ESLint
+        working-directory: client
+        run: npm run lint
+
+      # Produce a production frontend build.
+      - name: Run frontend build
+        working-directory: client
+        run: npm run build
+
+      # Persist the frontend build output for the deploy job.
+      - name: Upload frontend build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist
+          if-no-files-found: error
+
+  deploy-backend:
+    name: Deploy Backend
+    needs:
+      - lint-and-build-backend
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      # Trigger Render deployment using a service deploy hook secret.
+      - name: Trigger Render deploy hook
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          curl --fail --show-error --silent --request POST "$RENDER_DEPLOY_HOOK_URL"
+
+  deploy-frontend:
+    name: Deploy Frontend
+    needs:
+      - lint-and-build-frontend
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      # Restore the already-built frontend artifact from the build job.
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: client-dist
+          path: client-dist
+
+      # Netlify CLI is used here for explicit production deployment from CI.
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install Netlify CLI
+        run: npm install --global netlify-cli
+
+      # Deploy the downloaded build directory to the configured Netlify site.
+      - name: Deploy to Netlify
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: |
+          netlify deploy \
+            --dir=client-dist \
+            --prod \
+            --site "$NETLIFY_SITE_ID" \
+            --auth "$NETLIFY_AUTH_TOKEN" \
+            --message "GitHub Actions deploy ${GITHUB_SHA}"

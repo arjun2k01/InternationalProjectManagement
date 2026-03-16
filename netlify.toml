@@ -1,0 +1,16 @@
+# Netlify configuration for the Vite frontend.
+# The build runs from the client workspace and publishes the generated dist folder.
+
+[build]
+  base = "client"
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "18"
+
+# Client-side routing fallback for the React SPA.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

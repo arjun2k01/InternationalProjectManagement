@@ -1,0 +1,60 @@
+# Render Blueprint for ProjectFlow backend infrastructure.
+# This blueprint provisions:
+# 1. A Node.js web service for the Express + Socket.IO API
+# 2. A managed Render Key Value instance for Redis-compatible caching/pub-sub
+#
+# MongoDB is expected to stay on MongoDB Atlas, so MONGODB_URI is left as a
+# manually managed secret instead of a Render-managed database binding.
+
+services:
+  - type: web
+    name: project-mgmt-api
+    runtime: node
+    plan: starter
+
+    # Keep the backend commands scoped to the server workspace.
+    buildCommand: cd server && npm install
+    startCommand: cd server && node server.js
+
+    # Disable automatic deploys from Render itself so GitHub Actions controls
+    # production promotion via the deploy hook.
+    autoDeployTrigger: off
+
+    envVars:
+      # Core runtime configuration.
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+
+      # MongoDB Atlas connection string supplied manually in Render.
+      - key: MONGODB_URI
+        sync: false
+
+      # JWT secrets should always be managed as secrets, never committed.
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+
+      # Token lifetimes can be kept as plain config values.
+      - key: JWT_EXPIRY
+        value: 15m
+      - key: JWT_REFRESH_EXPIRY
+        value: 7d
+
+      # Frontend origin used by CORS.
+      - key: CLIENT_URL
+        sync: false
+
+      # Pull the Redis connection string from the managed key-value service below.
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: project-mgmt-redis
+          property: connectionString
+
+  - type: keyvalue
+    name: project-mgmt-redis
+    plan: starter
+    maxmemoryPolicy: allkeys-lru
